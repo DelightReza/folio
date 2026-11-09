@@ -1,0 +1,175 @@
+name: Build & Release Folio
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Sign Folio APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout your forked repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. Extract version and metadata directly from your repo
+      - name: Determine App Version & Metadata
+        id: meta
+        run: |
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+
+          # Check root package.json, then mobile package.json, then Gradle build scripts
+          APP_VER=""
+          if [ -f "package.json" ]; then
+            APP_VER=$(grep -m1 '"version":' package.json | awk -F '"' '{print $4}' || true)
+          fi
+          if [ -z "$APP_VER" ] && [ -f "apps/mobile/package.json" ]; then
+            APP_VER=$(grep -m1 '"version":' apps/mobile/package.json | awk -F '"' '{print $4}' || true)
+          fi
+          if [ -z "$APP_VER" ]; then
+            APP_VER=$(grep -rm1 'versionName' apps/mobile 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' || true)
+          fi
+          if [ -z "$APP_VER" ]; then
+            APP_VER="0.1.0"
+          fi
+
+          RELEASE_TAG="v${APP_VER}-${COMMIT_SHA}"
+
+          echo "version=$APP_VER" >> $GITHUB_OUTPUT
+          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+          echo "msg<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "App Version : $APP_VER"
+          echo "Commit SHA  : $COMMIT_SHA"
+          echo "Release Tag : $RELEASE_TAG"
+
+      # 3. Setup Bun & install monorepo dependencies
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ">=1.4.4"
+
+      - name: Install dependencies
+        run: bun install
+
+      # 4. Setup JDK 21 & Android SDK
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 5. Configure Gradle caching
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: apps/mobile
+
+      - name: Make gradlew executable
+        run: chmod +x apps/mobile/gradlew
+
+      # 6. Build APK with Gradle
+      - name: Build APK with Gradle
+        working-directory: apps/mobile
+        run: |
+          if [ "${{ inputs.build_type }}" = "release" ]; then
+            ./gradlew assembleRelease --stacktrace
+          else
+            ./gradlew assembleDebug --stacktrace
+          fi
+
+      # 7. Align and Sign APK
+      - name: Align and Sign APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          OUTPUT_APK="Folio-${{ steps.meta.outputs.tag }}.apk"
+
+          if [ "${{ inputs.build_type }}" = "release" ]; then
+            # Verify secrets exist for release build
+            if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+              echo "::error::Missing signing secrets! Check KEYSTORE_BASE64, KEYSTORE_PASSWORD, and KEY_ALIAS in GitHub Secrets."
+              exit 1
+            fi
+
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+
+            BUILD_TOOLS_DIR=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
+            ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
+            APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+
+            RAW_APK=$(find apps/mobile -path "*/build/outputs/apk/*" -name "*release*.apk" ! -name "*signed*" | head -n 1)
+            if [ -z "$RAW_APK" ]; then
+              echo "::error::No release APK found in build/outputs/apk/"
+              exit 1
+            fi
+            echo "Found APK: $RAW_APK"
+
+            "$ZIPALIGN" -f -p 4 "$RAW_APK" aligned.apk
+
+            "$APKSIGNER" sign --ks release.keystore \
+              --ks-pass pass:"$KEYSTORE_PASSWORD" \
+              --key-pass pass:"${KEY_PASSWORD:-$KEYSTORE_PASSWORD}" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --out "$OUTPUT_APK" \
+              aligned.apk
+
+            "$APKSIGNER" verify --verbose "$OUTPUT_APK"
+
+            rm -f release.keystore aligned.apk
+          else
+            DEBUG_APK=$(find apps/mobile -path "*/build/outputs/apk/*" -name "*debug*.apk" | head -n 1)
+            if [ -z "$DEBUG_APK" ]; then
+              echo "::error::No debug APK found!"
+              exit 1
+            fi
+            cp "$DEBUG_APK" "$OUTPUT_APK"
+          fi
+
+          echo "Final APK ready: $OUTPUT_APK"
+
+      # 8. Publish directly to GitHub Releases in your fork
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.ref_name }}
+          name: Folio v${{ steps.meta.outputs.version }} (${{ steps.meta.outputs.sha }})
+          body: |
+            ### Folio Android Build
+            * **Commit**: [`${{ steps.meta.outputs.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ steps.meta.outputs.sha }})
+            * **Commit Message**: ${{ steps.meta.outputs.msg }}
+            * **Version**: `v${{ steps.meta.outputs.version }}`
+            * **Build Type**: `${{ inputs.build_type }}`
+          files: |
+            Folio-${{ steps.meta.outputs.tag }}.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
