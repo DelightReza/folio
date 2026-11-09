@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.*
 import android.os.ParcelFileDescriptor
 import android.view.*
+import android.widget.FrameLayout
 import com.allient.folio.reader.*
 import io.legere.pdfiumandroid.PdfiumCore
 import kotlinx.coroutines.*
