@@ -3,10 +3,9 @@ package com.allient.folio
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.DashPathEffect
-import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import android.os.Build
+import android.view.View
 
 /** A quiet on-screen guide for handwriting; never part of document exports. */
 internal enum class WritingGridType(val label: String, val presetRows: Int? = null, val presetColumns: Int? = null) {
@@ -92,44 +91,29 @@ internal object WritingGrid {
         }
     }
 
-    /**
-     * Kept on a secure surface so Android screen captures and MediaProjection recordings omit the guide.
-     * The surface is transparent, allowing the document beneath it to remain visible.
-     */
-    internal class SecureWritingGridView(context: android.content.Context) : SurfaceView(context), SurfaceHolder.Callback {
+    /** A transparent overlay that Android redacts from screen captures without hiding the page below. */
+    internal class SecureWritingGridView(context: android.content.Context) : View(context) {
         private val bounds = RectF()
         private var visible = false
         private var settings = WritingGridSettings()
 
         init {
-            setZOrderOnTop(true)
-            holder.setFormat(PixelFormat.TRANSLUCENT)
-            holder.addCallback(this)
-            setSecure(true)
             isClickable = false
             isFocusable = false
+            if (Build.VERSION.SDK_INT >= 35) {
+                contentSensitivity = CONTENT_SENSITIVITY_SENSITIVE
+            }
         }
 
         fun update(next: RectF?, show: Boolean, nextSettings: WritingGridSettings = settings) {
             if (next != null) bounds.set(next) else bounds.setEmpty()
             visible = show
             settings = nextSettings
-            redraw()
+            invalidate()
         }
 
-        override fun surfaceCreated(holder: SurfaceHolder) = redraw()
-        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = redraw()
-        override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
-
-        private fun redraw() {
-            if (!holder.surface.isValid) return
-            val surfaceCanvas = holder.lockCanvas() ?: return
-            try {
-                surfaceCanvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
-                if (visible) WritingGrid.draw(surfaceCanvas, bounds, settings)
-            } finally {
-                holder.unlockCanvasAndPost(surfaceCanvas)
-            }
+        override fun onDraw(canvas: Canvas) {
+            if (visible) WritingGrid.draw(canvas, bounds, settings)
         }
     }
 }
