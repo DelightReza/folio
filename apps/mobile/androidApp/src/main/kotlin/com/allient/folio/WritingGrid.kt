@@ -98,29 +98,6 @@ internal object WritingGrid {
             }
         }
 
-        internal class WritingGridCaptureObserver(private val activity: Activity) {
-            private val executor = Executor { it.run() }
-            private val screenshotCallback = object : Activity.ScreenCaptureCallback() {
-                override fun onScreenCaptured() {
-                    WritingGrid.setCaptureActive(true)
-                    activity.window.decorView.postDelayed({ WritingGrid.setCaptureActive(false) }, 500L)
-                }
-            }
-            private val recordingCallback = Consumer<Int> { state ->
-                WritingGrid.setCaptureActive(state == WindowManager.SCREEN_RECORDING_STATE_VISIBLE)
-            }
-
-            fun register() {
-                if (Build.VERSION.SDK_INT >= 34) activity.registerScreenCaptureCallback(executor, screenshotCallback)
-                if (Build.VERSION.SDK_INT >= 35) activity.windowManager.addScreenRecordingCallback(executor, recordingCallback)
-            }
-
-            fun unregister() {
-                if (Build.VERSION.SDK_INT >= 34) activity.unregisterScreenCaptureCallback(screenshotCallback)
-                if (Build.VERSION.SDK_INT >= 35) activity.windowManager.removeScreenRecordingCallback(recordingCallback)
-                WritingGrid.setCaptureActive(false)
-            }
-        }
     }
 
     /** A transparent overlay that is hidden by the activity while Android captures the screen. */
@@ -158,5 +135,29 @@ internal object WritingGrid {
     internal fun setCaptureActive(active: Boolean) {
         captureActive = active
         synchronized(captureViews) { captureViews.toList().forEach(View::invalidate) }
+    }
+}
+
+internal class WritingGridCaptureObserver(private val activity: Activity) {
+    private val executor = Executor { it.run() }
+    private val screenshotCallback = object : Activity.ScreenCaptureCallback() {
+        override fun onScreenCaptured() {
+            WritingGrid.setCaptureActive(true)
+            activity.window.decorView.postDelayed({ WritingGrid.setCaptureActive(false) }, 500L)
+        }
+    }
+    private val recordingCallback = Consumer<Int> { state ->
+        WritingGrid.setCaptureActive(state == WindowManager.SCREEN_RECORDING_STATE_VISIBLE)
+    }
+
+    fun register() {
+        if (Build.VERSION.SDK_INT >= 34) activity.registerScreenCaptureCallback(executor, screenshotCallback)
+        if (Build.VERSION.SDK_INT >= 35) activity.windowManager.addScreenRecordingCallback(executor, recordingCallback)
+    }
+
+    fun unregister() {
+        if (Build.VERSION.SDK_INT >= 34) activity.unregisterScreenCaptureCallback(screenshotCallback)
+        if (Build.VERSION.SDK_INT >= 35) activity.windowManager.removeScreenRecordingCallback(recordingCallback)
+        WritingGrid.setCaptureActive(false)
     }
 }
