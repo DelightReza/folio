@@ -140,7 +140,7 @@ internal object WritingGrid {
 
 internal class WritingGridCaptureObserver(private val activity: Activity) {
     private val executor = Executor { it.run() }
-    private val screenshotCallback = object : Activity.ScreenCaptureCallback() {
+    private val screenshotCallback = object : Activity.ScreenCaptureCallback {
         override fun onScreenCaptured() {
             WritingGrid.setCaptureActive(true)
             activity.window.decorView.postDelayed({ WritingGrid.setCaptureActive(false) }, 500L)
