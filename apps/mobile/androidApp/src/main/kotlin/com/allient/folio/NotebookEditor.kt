@@ -211,8 +211,8 @@ internal fun NotebookEditor(
     var showPageBoundary by remember { mutableStateOf(preferences.getBoolean("showPageBoundary", false)) }
     var writingGridVisible by remember { mutableStateOf(preferences.getBoolean("${gridPrefix}visible", false)) }
     var writingGridType by remember { mutableStateOf(runCatching { WritingGridType.valueOf(preferences.getString("${gridPrefix}type", "CustomRowColumn")!!) }.getOrDefault(WritingGridType.CustomRowColumn)) }
-    var writingGridRows by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}rows", 24).coerceIn(2, 100)) }
-    var writingGridColumns by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}columns", 24).coerceIn(2, 100)) }
+    var writingGridRows by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}rows", 24).coerceIn(0, 100)) }
+    var writingGridColumns by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}columns", 24).coerceIn(0, 100)) }
     var writingGridThickness by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}thickness", 1f).coerceIn(.5f, 6f)) }
     var writingGridColor by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}color", WritingGridSettings().color)) }
     var writingGridOpacity by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}opacity", 1f).coerceIn(.1f, 1f)) }
@@ -746,9 +746,9 @@ internal fun NotebookEditor(
                     }
                     Text("Grid type", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     Canvas(Modifier.fillMaxWidth().height(100.dp).background(Color(0xFFF7F8F6))) {
-                        val columns = writingGridColumns.coerceIn(2, 20); val rows = writingGridRows.coerceIn(2, 20)
-                        for (column in 1 until columns) drawLine(Color(writingGridColor), androidx.compose.ui.geometry.Offset(size.width * column / columns, 0f), androidx.compose.ui.geometry.Offset(size.width * column / columns, size.height), writingGridThickness)
-                        for (row in 1 until rows) drawLine(Color(writingGridColor), androidx.compose.ui.geometry.Offset(0f, size.height * row / rows), androidx.compose.ui.geometry.Offset(size.width, size.height * row / rows), writingGridThickness)
+                        val columns = writingGridColumns.coerceIn(0, 20); val rows = writingGridRows.coerceIn(0, 20)
+                        if (columns > 0) for (column in 1 until columns) drawLine(Color(writingGridColor), androidx.compose.ui.geometry.Offset(size.width * column / columns, 0f), androidx.compose.ui.geometry.Offset(size.width * column / columns, size.height), writingGridThickness)
+                        if (rows > 0) for (row in 1 until rows) drawLine(Color(writingGridColor), androidx.compose.ui.geometry.Offset(0f, size.height * row / rows), androidx.compose.ui.geometry.Offset(size.width, size.height * row / rows), writingGridThickness)
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         WritingGridType.entries.forEach { type ->
@@ -762,13 +762,13 @@ internal fun NotebookEditor(
                     if (writingGridType == WritingGridType.CustomRowColumn || writingGridType == WritingGridType.CustomSize) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Rows", Modifier.weight(1f), fontSize = 14.sp)
-                            TextButton(onClick = { writingGridRows = (writingGridRows - 1).coerceAtLeast(2) }) { Text("−") }
+                            TextButton(onClick = { writingGridRows = (writingGridRows - 1).coerceAtLeast(0) }) { Text("−") }
                             Text("$writingGridRows", fontSize = 14.sp)
                             TextButton(onClick = { writingGridRows = (writingGridRows + 1).coerceAtMost(100) }) { Text("+") }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Columns", Modifier.weight(1f), fontSize = 14.sp)
-                            TextButton(onClick = { writingGridColumns = (writingGridColumns - 1).coerceAtLeast(2) }) { Text("−") }
+                            TextButton(onClick = { writingGridColumns = (writingGridColumns - 1).coerceAtLeast(0) }) { Text("−") }
                             Text("$writingGridColumns", fontSize = 14.sp)
                             TextButton(onClick = { writingGridColumns = (writingGridColumns + 1).coerceAtMost(100) }) { Text("+") }
                         }

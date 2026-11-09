@@ -41,12 +41,14 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val penFilter = PenPressureFilter()
+    private val gridCaptureObserver = WritingGridCaptureObserver(this)
     private lateinit var updates: PlayUpdates
 
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean = penFilter.dispatch(event) { super.dispatchTouchEvent(it) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        gridCaptureObserver.register()
         PenSettings.init(this)
         AppAnalytics.init(this)
         enableEdgeToEdge()
@@ -83,6 +85,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        gridCaptureObserver.unregister()
         updates.dispose()
         super.onDestroy()
     }

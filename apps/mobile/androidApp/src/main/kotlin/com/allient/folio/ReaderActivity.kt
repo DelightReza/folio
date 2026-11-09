@@ -70,6 +70,7 @@ import java.io.File
 import kotlin.math.roundToInt
 
 class ReaderActivity : AppCompatActivity() {
+    private val gridCaptureObserver = WritingGridCaptureObserver(this)
     private lateinit var model: ReaderViewModel
     private lateinit var notebookRepository: NotebookViewModel
     private var pdf: PdfReaderSession? by mutableStateOf(null)
@@ -95,6 +96,7 @@ class ReaderActivity : AppCompatActivity() {
         AppAnalytics.screen("reader")
         // Native navigators are rebuilt from persisted locators, never restored without a Publication.
         super.onCreate(null)
+        gridCaptureObserver.register()
         selected = savedInstanceState?.getString("selectionAnchor")?.let { PdfSelection(it, savedInstanceState.getString("selectionText").orEmpty()) }
         enableEdgeToEdge()
         setReaderImmersive()
@@ -116,6 +118,11 @@ class ReaderActivity : AppCompatActivity() {
                         try { pdf!!.contents() }
                         catch (cancelled: CancellationException) { throw cancelled }
                         catch (error: Exception) { AppAnalytics.recordError(error, "pdf_contents"); emptyList() }
+                    }
+
+                    override fun onDestroy() {
+                        gridCaptureObserver.unregister()
+                        super.onDestroy()
                     }
                     page = document.locator.takeIf { it.isNotBlank() }?.let { JSONObject(it).optInt("page") }?.coerceIn(0, pdf!!.pageCount - 1) ?: 0
                 } else publication = withContext(Dispatchers.IO) { EpubReaderEngine.open(this@ReaderActivity, File(document.path)) }
@@ -223,8 +230,8 @@ class ReaderActivity : AppCompatActivity() {
         var pdfScroll by rememberSaveable { mutableStateOf(settings.getBoolean("pdfScroll", false)) }
         var pdfWritingGrid by rememberSaveable { mutableStateOf(settings.getBoolean("${gridPrefix}visible", false)) }
         var pdfGridType by remember { mutableStateOf(runCatching { WritingGridType.valueOf(settings.getString("${gridPrefix}type", "CustomRowColumn")!!) }.getOrDefault(WritingGridType.CustomRowColumn)) }
-        var pdfGridRows by remember { mutableIntStateOf(settings.getInt("${gridPrefix}rows", 24).coerceIn(2, 100)) }
-        var pdfGridColumns by remember { mutableIntStateOf(settings.getInt("${gridPrefix}columns", 24).coerceIn(2, 100)) }
+        var pdfGridRows by remember { mutableIntStateOf(settings.getInt("${gridPrefix}rows", 24).coerceIn(0, 100)) }
+        var pdfGridColumns by remember { mutableIntStateOf(settings.getInt("${gridPrefix}columns", 24).coerceIn(0, 100)) }
         var pdfGridThickness by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}thickness", 1f).coerceIn(.5f, 6f)) }
         var pdfGridColor by remember { mutableIntStateOf(settings.getInt("${gridPrefix}color", WritingGridSettings().color)) }
         var pdfGridOpacity by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}opacity", 1f).coerceIn(.1f, 1f)) }
@@ -826,13 +833,13 @@ class ReaderActivity : AppCompatActivity() {
                         }
                         if (pdfGridType == WritingGridType.CustomRowColumn || pdfGridType == WritingGridType.CustomSize) Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("Rows", Modifier.weight(1f), fontSize = 14.sp)
-                            TextButton(onClick = { pdfGridRows = (pdfGridRows - 1).coerceAtLeast(2) }) { Text("−") }
+                            TextButton(onClick = { pdfGridRows = (pdfGridRows - 1).coerceAtLeast(0) }) { Text("−") }
                             Text("$pdfGridRows", fontSize = 14.sp)
                             TextButton(onClick = { pdfGridRows = (pdfGridRows + 1).coerceAtMost(100) }) { Text("+") }
                         }
                         if (pdfGridType == WritingGridType.CustomRowColumn || pdfGridType == WritingGridType.CustomSize) Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("Columns", Modifier.weight(1f), fontSize = 14.sp)
-                            TextButton(onClick = { pdfGridColumns = (pdfGridColumns - 1).coerceAtLeast(2) }) { Text("−") }
+                            TextButton(onClick = { pdfGridColumns = (pdfGridColumns - 1).coerceAtLeast(0) }) { Text("−") }
                             Text("$pdfGridColumns", fontSize = 14.sp)
                             TextButton(onClick = { pdfGridColumns = (pdfGridColumns + 1).coerceAtMost(100) }) { Text("+") }
                         }

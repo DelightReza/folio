@@ -497,9 +497,12 @@ internal class PdfPageReaderView(context: Context) : FrameLayout(context) {
     private fun normalize(x: Float, y: Float): PointF { val b = bounds(); return PointF(((x - b.left) / b.width()).coerceIn(0f, 1f), ((y - b.top) / b.height()).coerceIn(0f, 1f)) }
     private fun gridPoint(point: PointF): PointF {
         if (!writingGridSettings.snap) return point
-        val columns = writingGridSettings.columns.coerceIn(2, 100)
-        val rows = writingGridSettings.rows.coerceIn(2, 100)
-        return PointF((point.x * columns).roundToInt() / columns.toFloat(), (point.y * rows).roundToInt() / rows.toFloat())
+        val columns = writingGridSettings.columns.coerceIn(0, 100)
+        val rows = writingGridSettings.rows.coerceIn(0, 100)
+        return PointF(
+            if (columns > 0) (point.x * columns).roundToInt() / columns.toFloat() else point.x,
+            if (rows > 0) (point.y * rows).roundToInt() / rows.toFloat() else point.y,
+        )
     }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { resetToTop = fitWidth; clampPan(); scheduleRender() }
     private fun scheduleRender(debounceMillis: Long = 0) {

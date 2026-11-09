@@ -1430,9 +1430,12 @@ internal class InkCanvasView(context: Context, onChanged: (List<InkStroke>) -> U
     }
     private fun moveObject(point: Offset) {
         val snappedPoint = if (writingGridSnap && !infiniteCanvas) {
-            val columns = writingGridSettings.columns.coerceIn(2, 100)
-            val rows = writingGridSettings.rows.coerceIn(2, 100)
-            Offset((point.x * columns).roundToInt() / columns.toFloat(), (point.y * rows).roundToInt() / rows.toFloat())
+            val columns = writingGridSettings.columns.coerceIn(0, 100)
+            val rows = writingGridSettings.rows.coerceIn(0, 100)
+            Offset(
+                if (columns > 0) (point.x * columns).roundToInt() / columns.toFloat() else point.x,
+                if (rows > 0) (point.y * rows).roundToInt() / rows.toFloat() else point.y,
+            )
         } else point
         if (draggingBlock) { moveBlock(snappedPoint); return }
         if (!draggingObject) return
