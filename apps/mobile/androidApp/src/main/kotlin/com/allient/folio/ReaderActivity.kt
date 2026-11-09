@@ -120,10 +120,6 @@ class ReaderActivity : AppCompatActivity() {
                         catch (error: Exception) { AppAnalytics.recordError(error, "pdf_contents"); emptyList() }
                     }
 
-                    override fun onDestroy() {
-                        gridCaptureObserver.unregister()
-                        super.onDestroy()
-                    }
                     page = document.locator.takeIf { it.isNotBlank() }?.let { JSONObject(it).optInt("page") }?.coerceIn(0, pdf!!.pageCount - 1) ?: 0
                 } else publication = withContext(Dispatchers.IO) { EpubReaderEngine.open(this@ReaderActivity, File(document.path)) }
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -1247,6 +1243,7 @@ class ReaderActivity : AppCompatActivity() {
     override fun onPause() { saveReadingPosition(); super.onPause() }
     override fun onDestroy() {
         val session=pdf; val book=publication
+        gridCaptureObserver.unregister()
         super.onDestroy()
         ReaderWrites.scope.launch { session?.close();book?.close() }
     }

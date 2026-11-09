@@ -9,6 +9,7 @@ import android.os.Build
 import android.view.View
 import android.view.WindowManager
 import java.util.concurrent.Executor
+import java.util.function.Consumer
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -60,29 +61,6 @@ internal object WritingGrid {
                 WritingGridLineStyle.Dotted -> DashPathEffect(floatArrayOf(1f, 7f), 0f)
             }
 
-            internal class WritingGridCaptureObserver(private val activity: Activity) {
-                private val executor = Executor { it.run() }
-                private val screenshotCallback = object : Activity.ScreenCaptureCallback() {
-                    override fun onScreenCaptured() {
-                        WritingGrid.setCaptureActive(true)
-                        activity.window.decorView.postDelayed({ WritingGrid.setCaptureActive(false) }, 500L)
-                    }
-                }
-                private val recordingCallback = WindowManager.ScreenRecordingCallback { state ->
-                    WritingGrid.setCaptureActive(state == WindowManager.SCREEN_RECORDING_STATE_VISIBLE)
-                }
-
-                fun register() {
-                    if (Build.VERSION.SDK_INT >= 34) activity.registerScreenCaptureCallback(executor, screenshotCallback)
-                    if (Build.VERSION.SDK_INT >= 35) activity.windowManager.addScreenRecordingCallback(executor, recordingCallback)
-                }
-
-                fun unregister() {
-                    if (Build.VERSION.SDK_INT >= 34) activity.unregisterScreenCaptureCallback(screenshotCallback)
-                    if (Build.VERSION.SDK_INT >= 35) activity.windowManager.removeScreenRecordingCallback(recordingCallback)
-                    WritingGrid.setCaptureActive(false)
-                }
-            }
         }
         val insetX = bounds.width() * settings.margin.coerceIn(0f, .25f)
         val insetY = bounds.height() * settings.margin.coerceIn(0f, .25f)
@@ -102,6 +80,7 @@ internal object WritingGrid {
             val x = area.left + offsetX + columnStep * column
             if (x > area.left && x < area.right) canvas.drawLine(x, area.top, x, area.bottom, paint)
         }
+
         for (row in 1 until rows) {
             val y = area.top + offsetY + rowStep * row
             if (y > area.top && y < area.bottom) canvas.drawLine(area.left, y, area.right, y, paint)
@@ -116,6 +95,30 @@ internal object WritingGrid {
             for (row in settings.majorEvery until rows step settings.majorEvery) {
                 val y = area.top + offsetY + rowStep * row
                 if (y > area.top && y < area.bottom) canvas.drawLine(area.left, y, area.right, y, paint)
+            }
+        }
+
+        internal class WritingGridCaptureObserver(private val activity: Activity) {
+            private val executor = Executor { it.run() }
+            private val screenshotCallback = object : Activity.ScreenCaptureCallback() {
+                override fun onScreenCaptured() {
+                    WritingGrid.setCaptureActive(true)
+                    activity.window.decorView.postDelayed({ WritingGrid.setCaptureActive(false) }, 500L)
+                }
+            }
+            private val recordingCallback = Consumer<Int> { state ->
+                WritingGrid.setCaptureActive(state == WindowManager.SCREEN_RECORDING_STATE_VISIBLE)
+            }
+
+            fun register() {
+                if (Build.VERSION.SDK_INT >= 34) activity.registerScreenCaptureCallback(executor, screenshotCallback)
+                if (Build.VERSION.SDK_INT >= 35) activity.windowManager.addScreenRecordingCallback(executor, recordingCallback)
+            }
+
+            fun unregister() {
+                if (Build.VERSION.SDK_INT >= 34) activity.unregisterScreenCaptureCallback(screenshotCallback)
+                if (Build.VERSION.SDK_INT >= 35) activity.windowManager.removeScreenRecordingCallback(recordingCallback)
+                WritingGrid.setCaptureActive(false)
             }
         }
     }
