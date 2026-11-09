@@ -121,6 +121,9 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          echo "Listing all generated APKs across the workspace:"
+          find . -type f -name "*.apk"
+
           OUTPUT_APK="Folio-${{ steps.meta.outputs.tag }}.apk"
 
           if [ "${{ inputs.build_type }}" = "release" ]; then
@@ -135,12 +138,13 @@ jobs:
             ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
             APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
 
-            RAW_APK=$(find apps/mobile -path "*/build/outputs/apk/*" -name "*release*.apk" ! -name "*signed*" | head -n 1)
+            RAW_APK=$(find . -path "*/outputs/apk/*" -type f -name "*release*.apk" | head -n 1)
             if [ -z "$RAW_APK" ]; then
-              echo "::error::No release APK found in build/outputs/apk/"
+              echo "::error::Could not find release APK! Available APK files:"
+              find . -type f -name "*.apk"
               exit 1
             fi
-            echo "Found APK: $RAW_APK"
+            echo "Selected APK to sign: $RAW_APK"
 
             "$ZIPALIGN" -f -p 4 "$RAW_APK" aligned.apk
 
@@ -152,14 +156,16 @@ jobs:
               aligned.apk
 
             "$APKSIGNER" verify --verbose "$OUTPUT_APK"
-
             rm -f release.keystore aligned.apk
+
           else
-            DEBUG_APK=$(find apps/mobile -path "*/build/outputs/apk/*" -name "*debug*.apk" | head -n 1)
+            DEBUG_APK=$(find . -path "*/outputs/apk/*" -type f -name "*debug*.apk" | head -n 1)
             if [ -z "$DEBUG_APK" ]; then
-              echo "::error::No debug APK found!"
+              echo "::error::Could not find debug APK!"
+              find . -type f -name "*.apk"
               exit 1
             fi
+            echo "Selected debug APK: $DEBUG_APK"
             cp "$DEBUG_APK" "$OUTPUT_APK"
           fi
 
