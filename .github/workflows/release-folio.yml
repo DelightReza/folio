@@ -27,37 +27,47 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. Extract version and metadata directly from your repo
+      # 2. Extract version and metadata safely
       - name: Determine App Version & Metadata
         id: meta
         run: |
           COMMIT_SHA=$(git rev-parse --short HEAD)
           COMMIT_MSG=$(git log -1 --pretty=%s)
 
-          # Check root package.json, then mobile package.json, then Gradle build scripts
           APP_VER=""
+
           if [ -f "package.json" ]; then
-            APP_VER=$(grep -m1 '"version":' package.json | awk -F '"' '{print $4}' || true)
+            APP_VER=$(node -e 'try { const p = require("./package.json"); if (p.version) console.log(p.version); } catch(e){}' 2>/dev/null || true)
           fi
+
           if [ -z "$APP_VER" ] && [ -f "apps/mobile/package.json" ]; then
-            APP_VER=$(grep -m1 '"version":' apps/mobile/package.json | awk -F '"' '{print $4}' || true)
+            APP_VER=$(node -e 'try { const p = require("./apps/mobile/package.json"); if (p.version) console.log(p.version); } catch(e){}' 2>/dev/null || true)
           fi
+
           if [ -z "$APP_VER" ]; then
-            APP_VER=$(grep -rm1 'versionName' apps/mobile 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' || true)
+            for file in $(find apps/mobile -name "build.gradle.kts"); do
+              FOUND=$(grep -E '^\s*versionName\s*=' "$file" 2>/dev/null | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || true)
+              if [ -n "$FOUND" ]; then
+                APP_VER="$FOUND"
+                break
+              fi
+            done
           fi
+
           if [ -z "$APP_VER" ]; then
             APP_VER="0.1.0"
           fi
 
+          APP_VER=$(echo "$APP_VER" | tr -d '\r\n[:space:]')
           RELEASE_TAG="v${APP_VER}-${COMMIT_SHA}"
 
-          echo "version=$APP_VER" >> $GITHUB_OUTPUT
-          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-          echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "version=$APP_VER" >> "$GITHUB_OUTPUT"
+          echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
-          echo "msg<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "msg<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$COMMIT_MSG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
           echo "App Version : $APP_VER"
           echo "Commit SHA  : $COMMIT_SHA"
@@ -112,7 +122,6 @@ jobs:
           OUTPUT_APK="Folio-${{ steps.meta.outputs.tag }}.apk"
 
           if [ "${{ inputs.build_type }}" = "release" ]; then
-            # Verify secrets exist for release build
             if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
               echo "::error::Missing signing secrets! Check KEYSTORE_BASE64, KEYSTORE_PASSWORD, and KEY_ALIAS in GitHub Secrets."
               exit 1
