@@ -247,7 +247,12 @@ internal class PdfReaderSession(file: File, password: String? = null) : Closeabl
 }
 
 /** Bounded bitmap rendering off the main thread, with page-space selection and stylus strokes. */
-internal class PdfPageReaderView(context: Context) : View(context) {
+internal class PdfPageReaderView(context: Context) : FrameLayout(context) {
+    private val writingGrid = WritingGrid.SecureWritingGridView(context)
+    init {
+        setWillNotDraw(false)
+        addView(writingGrid, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
     var session: PdfReaderSession? = null
     var page = 0
     var tool = "Read"
@@ -265,6 +270,10 @@ internal class PdfPageReaderView(context: Context) : View(context) {
     var onAnnotationLongPress: (ReaderAnnotation) -> Unit = {}
     var onError: (String) -> Unit = {}
     var annotations: List<ReaderAnnotation> = emptyList()
+    var writingGridVisible: Boolean = false
+        set(value) { if (field != value) { field = value; invalidate() } }
+    var writingGridSettings: WritingGridSettings = WritingGridSettings()
+        set(value) { if (field != value) { field = value; invalidate() } }
     private data class Projection(val annotation: ReaderAnnotation, val groups: List<List<PointF>>, val inkWidth: Float)
     private var projections: List<Projection> = emptyList()
     private val pageBounds = RectF()
@@ -485,6 +494,12 @@ internal class PdfPageReaderView(context: Context) : View(context) {
         zoom = saved; panX = pannedX.coerceIn(-limitX, limitX); panY = pannedY.coerceIn(-limitY, limitY)
     }
     private fun normalize(x: Float, y: Float): PointF { val b = bounds(); return PointF(((x - b.left) / b.width()).coerceIn(0f, 1f), ((y - b.top) / b.height()).coerceIn(0f, 1f)) }
+    private fun gridPoint(point: PointF): PointF {
+        if (!writingGridSettings.snap) return point
+        val columns = writingGridSettings.columns.coerceIn(2, 100)
+        val rows = writingGridSettings.rows.coerceIn(2, 100)
+        return PointF((point.x * columns).roundToInt() / columns.toFloat(), (point.y * rows).roundToInt() / rows.toFloat())
+    }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { resetToTop = fitWidth; clampPan(); scheduleRender() }
     private fun scheduleRender(debounceMillis: Long = 0) {
         val current = session ?: return
@@ -602,6 +617,11 @@ internal class PdfPageReaderView(context: Context) : View(context) {
             paint.style = Paint.Style.FILL
         }
         canvas.restoreToCount(checkpoint)
+        writingGrid.update(
+            RectF(b.left + crop.left * b.width(), b.top + crop.top * b.height(),
+                b.left + crop.right * b.width(), b.top + crop.bottom * b.height()),
+            writingGridVisible, writingGridSettings
+        )
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -634,7 +654,7 @@ internal class PdfPageReaderView(context: Context) : View(context) {
                     val corners = listOf(PointF(rect.left, rect.top), PointF(rect.right, rect.top), PointF(rect.right, rect.bottom), PointF(rect.left, rect.bottom))
                     cropHandle = corners.indexOfFirst { hypot(event.x - b.left - it.x * b.width(), event.y - b.top - it.y * b.height()) < dp(28f) }
                 }
-                parent?.requestDisallowInterceptTouchEvent(!scrolling || tool != "Read" || zoom > 1f); previous = PointF(event.x,event.y); gestureStartX = event.x; gestureStartY = event.y; downAt = event.eventTime; start = normalize(event.x,event.y); drawing = true; if (tool == "Pen") { stroke.clear(); stroke += start }; if (tool == "Eraser") { erasedInGesture.clear(); eraseAt(event.x, event.y) }; return true }
+                parent?.requestDisallowInterceptTouchEvent(!scrolling || tool != "Read" || zoom > 1f); previous = PointF(event.x,event.y); gestureStartX = event.x; gestureStartY = event.y; downAt = event.eventTime; start = normalize(event.x,event.y); drawing = true; if (tool == "Pen") { stroke.clear(); stroke += gridPoint(start) }; if (tool == "Eraser") { erasedInGesture.clear(); eraseAt(event.x, event.y) }; return true }
             MotionEvent.ACTION_POINTER_DOWN -> { removeCallbacks(longPress); selecting = false; draggingHandle = -1; selectionJob?.cancel(); drawing = false; stroke.clear() }
             MotionEvent.ACTION_MOVE -> {
                 if (!selecting && draggingHandle < 0 && hypot(event.x - gestureStartX, event.y - gestureStartY) > android.view.ViewConfiguration.get(context).scaledTouchSlop) removeCallbacks(longPress)
@@ -646,8 +666,8 @@ internal class PdfPageReaderView(context: Context) : View(context) {
                     if (tool == "Eraser" && drawing) eraseAt(event.x, event.y)
                     if (tool == "Read" && gestures.slide && !selecting && draggingHandle < 0 && (zoom > 1f || fitWidth)) { panX += event.x - previous.x; panY += event.y - previous.y; clampPan() }
                     if (tool == "Pen" && drawing && stroke.size < 10000) {
-                        for (i in 0 until event.historySize) stroke += normalize(event.getHistoricalX(i),event.getHistoricalY(i))
-                        stroke += normalize(event.x,event.y)
+                        for (i in 0 until event.historySize) stroke += gridPoint(normalize(event.getHistoricalX(i),event.getHistoricalY(i)))
+                        stroke += gridPoint(normalize(event.x,event.y))
                     }
                 }
                 if (tool == "MarqueeCrop" && cropHandle >= 0) cropSelection?.let { rect ->

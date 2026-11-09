@@ -166,6 +166,7 @@ class ReaderActivity : AppCompatActivity() {
     @Composable private fun ReaderContent() {
         val scope = rememberCoroutineScope()
         val doc = model.current
+        val gridPrefix = "pdf-grid-${doc?.id ?: "default"}-"
         var panel by rememberSaveable { mutableStateOf<String?>(null) }
         var chromeVisible by rememberSaveable { mutableStateOf(intent.getBooleanExtra("showReaderControls", false)) }
         var showProgress by rememberSaveable { mutableStateOf(true) }
@@ -220,6 +221,25 @@ class ReaderActivity : AppCompatActivity() {
                 .putInt("pdfBleach", pdfBleach).putInt("pdfDarken", pdfDarken).putBoolean("pdfSmoothing", pdfSmoothing).apply()
         }
         var pdfScroll by rememberSaveable { mutableStateOf(settings.getBoolean("pdfScroll", false)) }
+        var pdfWritingGrid by rememberSaveable { mutableStateOf(settings.getBoolean("${gridPrefix}visible", false)) }
+        var pdfGridType by remember { mutableStateOf(runCatching { WritingGridType.valueOf(settings.getString("${gridPrefix}type", "CustomRowColumn")!!) }.getOrDefault(WritingGridType.CustomRowColumn)) }
+        var pdfGridRows by remember { mutableIntStateOf(settings.getInt("${gridPrefix}rows", 24).coerceIn(2, 100)) }
+        var pdfGridColumns by remember { mutableIntStateOf(settings.getInt("${gridPrefix}columns", 24).coerceIn(2, 100)) }
+        var pdfGridThickness by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}thickness", 1f).coerceIn(.5f, 6f)) }
+        var pdfGridColor by remember { mutableIntStateOf(settings.getInt("${gridPrefix}color", WritingGridSettings().color)) }
+        var pdfGridOpacity by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}opacity", 1f).coerceIn(.1f, 1f)) }
+        var pdfGridMajorEvery by remember { mutableIntStateOf(settings.getInt("${gridPrefix}majorEvery", 0).coerceIn(0, 20)) }
+        var pdfGridLineStyle by remember { mutableStateOf(runCatching { WritingGridLineStyle.valueOf(settings.getString("${gridPrefix}lineStyle", "Solid")!!) }.getOrDefault(WritingGridLineStyle.Solid)) }
+        var pdfGridLockAspect by remember { mutableStateOf(settings.getBoolean("${gridPrefix}lockAspect", false)) }
+        var pdfGridMargin by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}margin", 0f).coerceIn(0f, .25f)) }
+        var pdfGridOffsetX by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}offsetX", 0f).coerceIn(-.5f, .5f)) }
+        var pdfGridOffsetY by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}offsetY", 0f).coerceIn(-.5f, .5f)) }
+        var pdfGridCellWidthMm by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}cellWidthMm", 10f).coerceIn(1f, 100f)) }
+        var pdfGridCellHeightMm by remember { mutableFloatStateOf(settings.getFloat("${gridPrefix}cellHeightMm", 10f).coerceIn(1f, 100f)) }
+        var pdfGridSnap by remember { mutableStateOf(settings.getBoolean("${gridPrefix}snap", false)) }
+        val pdfGridSettings = WritingGridSettings(pdfGridType, pdfGridRows, pdfGridColumns, pdfGridThickness, pdfGridColor,
+            pdfGridOpacity, pdfGridMajorEvery, pdfGridLineStyle, pdfGridLockAspect, pdfGridMargin, pdfGridOffsetX, pdfGridOffsetY,
+            pdfGridCellWidthMm, pdfGridCellHeightMm, pdfGridSnap)
         var pdfSpread by rememberSaveable { mutableStateOf(settings.getBoolean("pdfSpread", false)) }
         var pdfRtl by rememberSaveable { mutableStateOf(settings.getBoolean("pdfRtl", false)) }
         var pdfContentFit by rememberSaveable { mutableStateOf(settings.getBoolean("pdfContentFit", false)) }
@@ -228,10 +248,18 @@ class ReaderActivity : AppCompatActivity() {
         var pdfCrop by rememberSaveable { mutableStateOf(settings.getString("pdfCrop", "") ?: "") }
         var pendingCrop by rememberSaveable { mutableStateOf("") }
         val cropRect = remember(pdfCrop) { pdfCrop.split(",").mapNotNull { it.toFloatOrNull() }.takeIf { it.size == 4 }?.let { android.graphics.RectF(it[0], it[1], it[2], it[3]) } }
-        LaunchedEffect(pdfZoom, pdfMargin, pdfContrast, pdfBrightness, pdfScroll, pdfSpread, pdfRtl, pdfFitWidth, pdfContentFit, pdfEnhancement, pdfCrop, splitHorizontal) {
+        LaunchedEffect(pdfZoom, pdfMargin, pdfContrast, pdfBrightness, pdfScroll, pdfSpread, pdfRtl, pdfFitWidth, pdfContentFit, pdfEnhancement, pdfCrop, splitHorizontal, pdfWritingGrid, pdfGridSettings) {
             settings.edit().putFloat("pdfZoom", pdfZoom).putFloat("pdfMargin", pdfMargin)
                 .putFloat("pdfContrast", pdfContrast).putFloat("pdfBrightness", pdfBrightness)
                 .putBoolean("pdfScroll", pdfScroll).putBoolean("pdfSpread", pdfSpread).putBoolean("pdfRtl", pdfRtl)
+                .putBoolean("${gridPrefix}visible", pdfWritingGrid).putString("${gridPrefix}type", pdfGridType.name)
+                .putInt("${gridPrefix}rows", pdfGridRows).putInt("${gridPrefix}columns", pdfGridColumns)
+                .putFloat("${gridPrefix}thickness", pdfGridThickness).putInt("${gridPrefix}color", pdfGridColor).putFloat("${gridPrefix}opacity", pdfGridOpacity)
+                .putInt("${gridPrefix}majorEvery", pdfGridMajorEvery).putString("${gridPrefix}lineStyle", pdfGridLineStyle.name)
+                .putBoolean("${gridPrefix}lockAspect", pdfGridLockAspect).putFloat("${gridPrefix}margin", pdfGridMargin)
+                .putFloat("${gridPrefix}offsetX", pdfGridOffsetX).putFloat("${gridPrefix}offsetY", pdfGridOffsetY)
+                .putFloat("${gridPrefix}cellWidthMm", pdfGridCellWidthMm).putFloat("${gridPrefix}cellHeightMm", pdfGridCellHeightMm)
+                .putBoolean("${gridPrefix}snap", pdfGridSnap)
                 .putBoolean("pdfContentFit", pdfContentFit).putBoolean("pdfFitWidth", pdfFitWidth).putFloat("pdfEnhancement", pdfEnhancement)
                 .putString("pdfCrop", pdfCrop).putBoolean("splitHorizontal", splitHorizontal).apply()
         }
@@ -433,6 +461,8 @@ class ReaderActivity : AppCompatActivity() {
                             view.setLayout(pdfContentFit && pdfFitWidth, cropRect ?: fittedContent, pdfEnhancement, pdfScroll || pdfSpread, pdfRtl, alignTop = pdfContentFit && cropRect == null)
                             view.setDisplay(pdfZoom, pdfMargin, pdfContrast, pdfBrightness)
                             view.setImageAdjustments(imageAdjustments)
+                            view.writingGridVisible = pdfWritingGrid
+                            view.writingGridSettings = pdfGridSettings
                             view.gestures = gestures; view.onShowControls = { chromeVisible = true }
                             view.onZoomChange = { pdfZoom = it }
                             view.setCropSelection(pendingCrop.split(",").mapNotNull { it.toFloatOrNull() }.takeIf { it.size == 4 }?.let { android.graphics.RectF(it[0], it[1], it[2], it[3]) })
@@ -718,6 +748,7 @@ class ReaderActivity : AppCompatActivity() {
                     if (!compactActions) secondary()
                     ReaderAction(InkIcon.Search, "Search", Modifier.width(60.dp)) { panel = "Search" }
                     ReaderAction(InkIcon.Pen, "Notes", Modifier.width(60.dp)) { if (pdf != null) { tool = "Pen"; drawingToolbar = true; chromeVisible = false } else panel = "Annotations" }
+                    if (pdf != null) ReaderAction(InkIcon.Table, "Grid", Modifier.width(56.dp), active = pdfWritingGrid) { pdfWritingGrid = !pdfWritingGrid }
                     ReaderAction(InkIcon.ReaderBookmark, "Bookmark", Modifier.width(68.dp), active = bookmark != null, enabled = currentAnchor() != null) { toggleBookmark() }
                     ReaderAction(InkIcon.More, "More", Modifier.width(56.dp)) { panel = "More" }
                     if (compactActions) secondary()
@@ -783,6 +814,68 @@ class ReaderActivity : AppCompatActivity() {
                             ReaderAction(InkIcon.Crop, "Marquee Crop", Modifier.width(110.dp)) { pendingCrop = ""; tool = "MarqueeCrop"; pdfScroll = false; chromeVisible = false }
                             ReaderAction(InkIcon.Rotate, "Reset", Modifier.width(72.dp)) { pdfCrop = ""; pdfContentFit = false; pdfFitWidth = false; pdfZoom = 1f; pdfMargin = 0f }
                         }
+                        Text("Grid", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall)
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            WritingGridType.entries.forEach { type ->
+                                FilterChip(selected = pdfGridType == type, onClick = {
+                                    pdfGridType = type
+                                    type.presetRows?.let { pdfGridRows = it }
+                                    type.presetColumns?.let { pdfGridColumns = it }
+                                }, label = { Text(type.label, fontSize = 12.sp) })
+                            }
+                        }
+                        if (pdfGridType == WritingGridType.CustomRowColumn || pdfGridType == WritingGridType.CustomSize) Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Rows", Modifier.weight(1f), fontSize = 14.sp)
+                            TextButton(onClick = { pdfGridRows = (pdfGridRows - 1).coerceAtLeast(2) }) { Text("−") }
+                            Text("$pdfGridRows", fontSize = 14.sp)
+                            TextButton(onClick = { pdfGridRows = (pdfGridRows + 1).coerceAtMost(100) }) { Text("+") }
+                        }
+                        if (pdfGridType == WritingGridType.CustomRowColumn || pdfGridType == WritingGridType.CustomSize) Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Columns", Modifier.weight(1f), fontSize = 14.sp)
+                            TextButton(onClick = { pdfGridColumns = (pdfGridColumns - 1).coerceAtLeast(2) }) { Text("−") }
+                            Text("$pdfGridColumns", fontSize = 14.sp)
+                            TextButton(onClick = { pdfGridColumns = (pdfGridColumns + 1).coerceAtMost(100) }) { Text("+") }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Thickness", Modifier.weight(1f), fontSize = 14.sp)
+                            Slider(pdfGridThickness, { pdfGridThickness = it }, valueRange = .5f..6f, modifier = Modifier.weight(1.5f))
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Colour", Modifier.weight(1f), fontSize = 14.sp)
+                            ColorMenuDot(pdfGridColor, "Grid colour", WritingGridColors) { pdfGridColor = it }
+                        }
+                        Text("Line style", Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            WritingGridLineStyle.entries.forEach { style -> FilterChip(pdfGridLineStyle == style, { pdfGridLineStyle = style }, label = { Text(style.label, fontSize = 12.sp) }) }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Major lines", Modifier.weight(1f), fontSize = 14.sp)
+                            TextButton(onClick = { pdfGridMajorEvery = (pdfGridMajorEvery - 1).coerceAtLeast(0) }) { Text("−") }
+                            Text(if (pdfGridMajorEvery == 0) "Off" else "Every $pdfGridMajorEvery", fontSize = 13.sp)
+                            TextButton(onClick = { pdfGridMajorEvery = (pdfGridMajorEvery + 1).coerceAtMost(20) }) { Text("+") }
+                        }
+                        ReaderSettingRow("Opacity", pdfGridOpacity * 100f, 10f..100f) { pdfGridOpacity = it / 100f }
+                        ReaderSettingRow("Margin", pdfGridMargin * 100f, 0f..25f) { pdfGridMargin = it / 100f }
+                        ReaderSettingRow("Horizontal offset", pdfGridOffsetX * 100f, -50f..50f) { pdfGridOffsetX = it / 100f }
+                        ReaderSettingRow("Vertical offset", pdfGridOffsetY * 100f, -50f..50f) { pdfGridOffsetY = it / 100f }
+                        if (pdfGridType == WritingGridType.CustomSize) {
+                            ReaderSettingRow("Cell width (mm)", pdfGridCellWidthMm, 1f..100f) { pdfGridCellWidthMm = it; if (pdfGridLockAspect) pdfGridCellHeightMm = it }
+                            ReaderSettingRow("Cell height (mm)", pdfGridCellHeightMm, 1f..100f) { pdfGridCellHeightMm = it; if (pdfGridLockAspect) pdfGridCellWidthMm = it }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Lock square cells", Modifier.weight(1f), fontSize = 14.sp)
+                            Switch(pdfGridLockAspect, { pdfGridLockAspect = it })
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Snap to grid", Modifier.weight(1f), fontSize = 14.sp)
+                            Switch(pdfGridSnap, { pdfGridSnap = it })
+                        }
+                        TextButton(onClick = {
+                            pdfGridType = WritingGridType.CustomRowColumn; pdfGridRows = 24; pdfGridColumns = 24; pdfGridThickness = 1f
+                            pdfGridColor = WritingGridSettings().color; pdfGridOpacity = 1f; pdfGridMajorEvery = 0
+                            pdfGridLineStyle = WritingGridLineStyle.Solid; pdfGridLockAspect = false; pdfGridMargin = 0f
+                            pdfGridOffsetX = 0f; pdfGridOffsetY = 0f; pdfGridCellWidthMm = 10f; pdfGridCellHeightMm = 10f; pdfGridSnap = false
+                        }, Modifier.padding(horizontal = 20.dp)) { Text("Reset grid settings") }
                         ReaderSettingRow("Margin", pdfMargin, 0f..16f) { pdfMargin = it.roundToInt().toFloat() }
                         ReaderSettingRow("Text Enhancement", pdfEnhancement, 0f..17f) { pdfEnhancement = it.roundToInt().toFloat() }
                     } else {

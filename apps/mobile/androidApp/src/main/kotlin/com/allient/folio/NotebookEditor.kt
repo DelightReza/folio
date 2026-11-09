@@ -158,6 +158,7 @@ internal fun NotebookEditor(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val preferences = remember { context.getSharedPreferences("editor", Context.MODE_PRIVATE) }
+    val gridPrefix = "grid-${notebook.id}-"
     var showNoteTabs by remember { mutableStateOf(preferences.getBoolean("showNoteTabs", true)) }
     var closedNoteTabs by remember { mutableStateOf(preferences.getStringSet("closedNoteTabs", emptySet()).orEmpty().toSet()) }
     LaunchedEffect(notebook.id) {
@@ -208,6 +209,25 @@ internal fun NotebookEditor(
     var pageLayout by remember { mutableStateOf(preferences.getString("pageLayout", "Single Page") ?: "Single Page") }
     val effectivePageLayout = if (notebook.infiniteCanvas) "Infinite" else pageLayout
     var showPageBoundary by remember { mutableStateOf(preferences.getBoolean("showPageBoundary", false)) }
+    var writingGridVisible by remember { mutableStateOf(preferences.getBoolean("${gridPrefix}visible", false)) }
+    var writingGridType by remember { mutableStateOf(runCatching { WritingGridType.valueOf(preferences.getString("${gridPrefix}type", "CustomRowColumn")!!) }.getOrDefault(WritingGridType.CustomRowColumn)) }
+    var writingGridRows by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}rows", 24).coerceIn(2, 100)) }
+    var writingGridColumns by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}columns", 24).coerceIn(2, 100)) }
+    var writingGridThickness by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}thickness", 1f).coerceIn(.5f, 6f)) }
+    var writingGridColor by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}color", WritingGridSettings().color)) }
+    var writingGridOpacity by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}opacity", 1f).coerceIn(.1f, 1f)) }
+    var writingGridMajorEvery by remember { mutableIntStateOf(preferences.getInt("${gridPrefix}majorEvery", 0).coerceIn(0, 20)) }
+    var writingGridLineStyle by remember { mutableStateOf(runCatching { WritingGridLineStyle.valueOf(preferences.getString("${gridPrefix}lineStyle", "Solid")!!) }.getOrDefault(WritingGridLineStyle.Solid)) }
+    var writingGridLockAspect by remember { mutableStateOf(preferences.getBoolean("${gridPrefix}lockAspect", false)) }
+    var writingGridMargin by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}margin", 0f).coerceIn(0f, .25f)) }
+    var writingGridOffsetX by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}offsetX", 0f).coerceIn(-.5f, .5f)) }
+    var writingGridOffsetY by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}offsetY", 0f).coerceIn(-.5f, .5f)) }
+    var writingGridCellWidthMm by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}cellWidthMm", 10f).coerceIn(1f, 100f)) }
+    var writingGridCellHeightMm by remember { mutableFloatStateOf(preferences.getFloat("${gridPrefix}cellHeightMm", 10f).coerceIn(1f, 100f)) }
+    var writingGridSnap by remember { mutableStateOf(preferences.getBoolean("${gridPrefix}snap", false)) }
+    val writingGridSettings = WritingGridSettings(writingGridType, writingGridRows, writingGridColumns, writingGridThickness, writingGridColor,
+        writingGridOpacity, writingGridMajorEvery, writingGridLineStyle, writingGridLockAspect, writingGridMargin, writingGridOffsetX, writingGridOffsetY,
+        writingGridCellWidthMm, writingGridCellHeightMm, writingGridSnap)
     var singleFingerSwipe by remember { mutableStateOf(preferences.getBoolean("singleFingerSwipe", true)) }
     var horizontalPageSwipe by remember { mutableStateOf(preferences.getBoolean("horizontalPageSwipe", true)) }
     var longPressSelectEnabled by remember { mutableStateOf(preferences.getBoolean("longPressSelectEnabled", false)) }
@@ -252,7 +272,8 @@ internal fun NotebookEditor(
         val saved = preferences.getStringSet("toolbarTools", null)?.toSet()
         // Layouts saved before these tools existed keep them visible once, then follow the user's choice.
         mutableStateOf(when {
-            saved == null -> setOf("Template", "Layers", "Shapes", "Lasso", "Fill", "Pressure", "Gestures", "Zoom", "Page layout", "Text", "Insert", "Page +", "Share") + newTools
+            saved == null -> setOf("Template", "Layers", "Shapes", "Lasso", "Fill", "Pressure", "Gestures", "Zoom", "Page layout", "Grid", "Text", "Insert", "Page +", "Share") + newTools
+            "Grid" !in saved -> saved + "Grid"
             !preferences.getBoolean("toolbarBlockToolsAdded", false) -> saved + newTools
             else -> saved
         })
@@ -326,6 +347,17 @@ internal fun NotebookEditor(
     LaunchedEffect(pageLayout, showPageBoundary, singleFingerSwipe) {
         preferences.edit().putString("pageLayout", pageLayout).putBoolean("showPageBoundary", showPageBoundary)
             .putBoolean("singleFingerSwipe", singleFingerSwipe).apply()
+    }
+    LaunchedEffect(writingGridVisible, writingGridSettings) {
+        preferences.edit().putBoolean("${gridPrefix}visible", writingGridVisible)
+            .putString("${gridPrefix}type", writingGridType.name).putInt("${gridPrefix}rows", writingGridRows)
+            .putInt("${gridPrefix}columns", writingGridColumns).putFloat("${gridPrefix}thickness", writingGridThickness)
+            .putInt("${gridPrefix}color", writingGridColor).putFloat("${gridPrefix}opacity", writingGridOpacity)
+            .putInt("${gridPrefix}majorEvery", writingGridMajorEvery).putString("${gridPrefix}lineStyle", writingGridLineStyle.name)
+            .putBoolean("${gridPrefix}lockAspect", writingGridLockAspect).putFloat("${gridPrefix}margin", writingGridMargin)
+            .putFloat("${gridPrefix}offsetX", writingGridOffsetX).putFloat("${gridPrefix}offsetY", writingGridOffsetY)
+            .putFloat("${gridPrefix}cellWidthMm", writingGridCellWidthMm).putFloat("${gridPrefix}cellHeightMm", writingGridCellHeightMm)
+            .putBoolean("${gridPrefix}snap", writingGridSnap).apply()
     }
     LaunchedEffect(pinchToZoom) { preferences.edit().putBoolean("pinchToZoom", pinchToZoom).apply() }
     LaunchedEffect(horizontalPageSwipe, longPressSelectEnabled) {
@@ -704,6 +736,75 @@ internal fun NotebookEditor(
                         Text("Spacing ${paper.spacing}", fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.width(88.dp))
                         androidx.compose.material3.Slider(paper.spacing.toFloat(), { set(paper.copy(spacing = it.roundToInt().coerceIn(1, 8))) }, Modifier.weight(1f), enabled = paper.pattern != "blank", valueRange = 1f..8f, steps = 6)
                     }
+                }
+                "grid" -> {
+                    fun resetGrid() {
+                        writingGridType = WritingGridType.CustomRowColumn; writingGridRows = 24; writingGridColumns = 24
+                        writingGridThickness = 1f; writingGridColor = WritingGridSettings().color; writingGridOpacity = 1f
+                        writingGridMajorEvery = 0; writingGridLineStyle = WritingGridLineStyle.Solid; writingGridLockAspect = false
+                        writingGridMargin = 0f; writingGridOffsetX = 0f; writingGridOffsetY = 0f; writingGridCellWidthMm = 10f; writingGridCellHeightMm = 10f; writingGridSnap = false
+                    }
+                    Text("Grid type", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Canvas(Modifier.fillMaxWidth().height(100.dp).background(Color(0xFFF7F8F6))) {
+                        val columns = writingGridColumns.coerceIn(2, 20); val rows = writingGridRows.coerceIn(2, 20)
+                        for (column in 1 until columns) drawLine(Color(writingGridColor), androidx.compose.ui.geometry.Offset(size.width * column / columns, 0f), androidx.compose.ui.geometry.Offset(size.width * column / columns, size.height), writingGridThickness)
+                        for (row in 1 until rows) drawLine(Color(writingGridColor), androidx.compose.ui.geometry.Offset(0f, size.height * row / rows), androidx.compose.ui.geometry.Offset(size.width, size.height * row / rows), writingGridThickness)
+                    }
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        WritingGridType.entries.forEach { type ->
+                            FilterChip(selected = writingGridType == type, onClick = {
+                                writingGridType = type
+                                type.presetRows?.let { writingGridRows = it }
+                                type.presetColumns?.let { writingGridColumns = it }
+                            }, label = { Text(type.label, fontSize = 12.sp) })
+                        }
+                    }
+                    if (writingGridType == WritingGridType.CustomRowColumn || writingGridType == WritingGridType.CustomSize) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Rows", Modifier.weight(1f), fontSize = 14.sp)
+                            TextButton(onClick = { writingGridRows = (writingGridRows - 1).coerceAtLeast(2) }) { Text("−") }
+                            Text("$writingGridRows", fontSize = 14.sp)
+                            TextButton(onClick = { writingGridRows = (writingGridRows + 1).coerceAtMost(100) }) { Text("+") }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Columns", Modifier.weight(1f), fontSize = 14.sp)
+                            TextButton(onClick = { writingGridColumns = (writingGridColumns - 1).coerceAtLeast(2) }) { Text("−") }
+                            Text("$writingGridColumns", fontSize = 14.sp)
+                            TextButton(onClick = { writingGridColumns = (writingGridColumns + 1).coerceAtMost(100) }) { Text("+") }
+                        }
+                    } else {
+                        Text("${writingGridType.label}: ${writingGridRows} rows × ${writingGridColumns} columns", fontSize = 12.sp, color = ChromeMuted)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Thickness ${"%.1f".format(Locale.US, writingGridThickness)}", Modifier.weight(1f), fontSize = 13.sp)
+                        Slider(writingGridThickness, { writingGridThickness = it }, valueRange = .5f..6f, modifier = Modifier.weight(1.5f))
+                    }
+                    Text("Line style", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        WritingGridLineStyle.entries.forEach { style -> FilterChip(writingGridLineStyle == style, { writingGridLineStyle = style }, label = { Text(style.label, fontSize = 12.sp) }) }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Major lines", Modifier.weight(1f), fontSize = 14.sp)
+                        TextButton(onClick = { writingGridMajorEvery = (writingGridMajorEvery - 1).coerceAtLeast(0) }) { Text("−") }
+                        Text(if (writingGridMajorEvery == 0) "Off" else "Every $writingGridMajorEvery", fontSize = 13.sp)
+                        TextButton(onClick = { writingGridMajorEvery = (writingGridMajorEvery + 1).coerceAtMost(20) }) { Text("+") }
+                    }
+                    LineSlider(writingGridOpacity, .1f..1f, "Grid opacity") { writingGridOpacity = it }
+                    ToolToggle("Lock square cells", "Keep custom-size cells proportional.", writingGridLockAspect) { writingGridLockAspect = it }
+                    LineSlider(writingGridMargin, 0f.. .25f, "Page margin") { writingGridMargin = it }
+                    LineSlider(writingGridOffsetX, -.5f.. .5f, "Horizontal offset") { writingGridOffsetX = it }
+                    LineSlider(writingGridOffsetY, -.5f.. .5f, "Vertical offset") { writingGridOffsetY = it }
+                    if (writingGridType == WritingGridType.CustomSize) {
+                        LineSlider(writingGridCellWidthMm, 1f..100f, "Cell width (mm)") { writingGridCellWidthMm = it; if (writingGridLockAspect) writingGridCellHeightMm = it }
+                        LineSlider(writingGridCellHeightMm, 1f..100f, "Cell height (mm)") { writingGridCellHeightMm = it; if (writingGridLockAspect) writingGridCellWidthMm = it }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Colour", Modifier.weight(1f), fontSize = 14.sp)
+                        ColorMenuDot(writingGridColor, "Grid colour", WritingGridColors) { writingGridColor = it }
+                    }
+                    ToolToggle("Show grid", "Show the guide while writing. It is not saved or exported.", writingGridVisible) { writingGridVisible = it }
+                    ToolToggle("Snap to grid", "Align movable text, images and blocks to grid intersections.", writingGridSnap) { writingGridSnap = it }
+                    TextButton(onClick = { resetGrid() }) { Text("Reset grid settings") }
                 }
                 "table" -> TableSheet(tableDraft, { tableDraft = it }, ::addTable)
                 "stickers" -> StickerSheet(::addSticker)
@@ -1242,7 +1343,7 @@ internal fun NotebookEditor(
                         Text("Toolbar on the right", Modifier.weight(1f), fontSize = 14.sp)
                         Switch(railOnRight, onCheckedChange = { railOnRight = it })
                     }
-                    listOf("Template", "Layers", "Shapes", "Lasso", "Fill", "Pressure", "Gestures", "Table", "Stickers", "Sticky", "Ruler", "Zoom", "Page layout", "Text", "Insert", "Page +", "Share").forEach { tool ->
+                    listOf("Template", "Layers", "Shapes", "Lasso", "Fill", "Pressure", "Gestures", "Table", "Stickers", "Sticky", "Ruler", "Zoom", "Page layout", "Grid", "Text", "Insert", "Page +", "Share").forEach { tool ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(tool, Modifier.weight(1f), fontSize = 14.sp)
                             Switch(checked = tool in toolbarTools, onCheckedChange = { checked -> toolbarTools = if (checked) toolbarTools + tool else toolbarTools - tool })
@@ -1285,6 +1386,7 @@ internal fun NotebookEditor(
                     ToolAction(InkIcon.Sticky, "Sticky note", "Place a coloured note you can write on") { addStickyNote() }
                     ToolAction(InkIcon.Tag, "Notebook tags") { selectedIds = emptySet(); draft = ""; sheet = "tags" }
                     ToolAction(InkIcon.More, "Customize Toolbar") { sheet = "customize toolbar" }
+                    ToolAction(InkIcon.Table, "Grid settings") { sheet = "grid" }
                     if (clipboard.isNotEmpty()) ToolAction(InkIcon.Copy, "Paste strokes") { paste(); sheet = null }
                     ToolAction(InkIcon.Save, "Save") { save(); message = "Notebook saved." }
                     ToolAction(InkIcon.Microphone, "Recordings") { sheet = "recordings" }
@@ -1352,6 +1454,7 @@ internal fun NotebookEditor(
                 if ("Ruler" in toolbarTools) InkRailButton(InkIcon.Ruler, "Ruler", { canvas?.flushInput(); rulerOn = !rulerOn }, rulerOn)
                 if ("Zoom" in toolbarTools) InkRailButton(InkIcon.Zoom, "${(zoom * 100).toInt()}%", { openToolPanel("zoom") }, mode == CanvasMode.Pan)
                 if ("Page layout" in toolbarTools && !notebook.infiniteCanvas) InkRailButton(InkIcon.Pages, "Page", { openToolPanel("page layout") })
+                if ("Grid" in toolbarTools && !notebook.infiniteCanvas) InkRailButton(InkIcon.Table, "Grid", { canvas?.flushInput(); writingGridVisible = !writingGridVisible }, writingGridVisible)
                 if ("Text" in toolbarTools) InkRailButton(InkIcon.Text, "Text", { openToolPanel("text") })
                 if ("Insert" in toolbarTools) InkRailButton(InkIcon.Insert, "Insert", { openToolPanel("insert") })
                 if ("Page +" in toolbarTools && !notebook.infiniteCanvas) InkRailButton(InkIcon.AddPage, "Page +", { openToolPanel("page+") })
@@ -1471,6 +1574,8 @@ internal fun NotebookEditor(
                                         mode = mode, shape = shape, shapeFilled = shapeFilled, shapeFillColor = shapeFillColor, shapeBorderNone = shapeBorderNone, shapeColor = shapeColor, shapeWidth = shapeWidth,
                                         shapeLineStyle = shapeLineStyle, fillColor = fillColor, eraserMode = eraserMode, eraserWidth = eraserWidth,
                                         eraseActiveLayerOnly = eraseActiveLayerOnly, lassoKind = lassoKind, fingerDrawing = fingerDrawing, pinchToZoom = pinchToZoom,
+                                        writingGridVisible = writingGridVisible,
+                                        writingGridSettings = writingGridSettings,
                                         activeLayerId = if (model.id == page.id) activeLayer else model.layers.firstOrNull()?.id ?: "ink",
                                         selectedIds = if (model.id == page.id) selectedIds else emptySet(),
                                         onVerticalFingerScroll = { delta -> pageListState.dispatchRawDelta(delta) },
@@ -1539,6 +1644,8 @@ internal fun NotebookEditor(
                                     view.eraserWidth = eraserWidth; view.eraseActiveLayerOnly = eraseActiveLayerOnly; view.lassoKind = lassoKind
                                     view.onEraseFinished = { if (autoReturnToPen) { selectedBrush = previousPen; mode = CanvasMode.Write } }
                                     view.layers = page.layers; view.activeLayerId = activeLayer; view.template = page.template
+                                    view.writingGridVisible = writingGridVisible
+                                    view.writingGridSettings = writingGridSettings
                                     view.fingerDrawing = fingerDrawing; view.pinchToZoomEnabled = pinchToZoom
                                     view.singlePageFingerSwipeEnabled = effectivePageLayout == "Single Page" && !notebook.infiniteCanvas && horizontalPageSwipe
                                     view.longPressSelectEnabled = longPressSelectEnabled && fingerDrawing
@@ -1599,6 +1706,8 @@ internal fun NotebookEditor(
                                     view.velocityCurveEnabled = velocityCurveEnabled; view.velocityCurve = velocityCurve
                                     view.tiltCurveEnabled = tiltCurveEnabled; view.tiltCurve = tiltCurve
                                     view.layers = page.layers; view.activeLayerId = activeLayer; view.template = page.template
+                                    view.writingGridVisible = writingGridVisible
+                                    view.writingGridSettings = writingGridSettings
                                     if (!view.hasPendingEdits) { view.texts = page.texts; view.images = page.images; view.strokes = page.strokes }
                                     if (zoomPanelSize.width > 0) view.showRegion(box)
                                 })
@@ -1834,6 +1943,8 @@ private fun NotebookPageCanvas(
     lassoKind: LassoKind,
     fingerDrawing: Boolean,
     pinchToZoom: Boolean,
+    writingGridVisible: Boolean,
+    writingGridSettings: WritingGridSettings,
     pageSwipeEnabled: Boolean,
     longPressSelectEnabled: Boolean,
     onLongPressSelection: (Boolean) -> Unit,
@@ -1871,6 +1982,8 @@ private fun NotebookPageCanvas(
                 view.eraseActiveLayerOnly = eraseActiveLayerOnly; view.lassoKind = lassoKind
                 view.onEraseFinished = onEraseFinished
                 view.layers = model.layers; view.activeLayerId = activeLayerId; view.template = model.template
+                view.writingGridVisible = writingGridVisible
+                view.writingGridSettings = writingGridSettings
                 view.fingerDrawing = fingerDrawing; view.pinchToZoomEnabled = pinchToZoom; view.singleFingerVerticalSwipe = swipeEnabled
                 view.twoFingerVerticalScroll = stackedCanvas
                 view.singlePageFingerSwipeEnabled = pageSwipeEnabled; view.onHorizontalFingerSwipe = onHorizontalFingerSwipe

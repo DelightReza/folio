@@ -18,6 +18,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /** Distance of the rotation handle above the selection box. */
 private const val ROTATE_HANDLE_DP = 40f
@@ -57,7 +58,13 @@ internal enum class LassoKind { Smart, Freeform, Rectangle }
 internal enum class EraserMode(val label: String) { Pixel("Pixel Eraser"), Stroke("Stroke Eraser"), Lasso("Lasso Eraser") }
 
 internal class InkCanvasView(context: Context, onChanged: (List<InkStroke>) -> Unit) : FrameLayout(context) {
-    init { setWillNotDraw(false); contentDescription = "Handwriting canvas"; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES }
+    private val writingGrid = WritingGrid.SecureWritingGridView(context)
+    init {
+        setWillNotDraw(false)
+        addView(writingGrid, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        contentDescription = "Handwriting canvas"
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
+    }
     private var frontInk: FrontBufferedInkController? = null
     private var backendReported = false
     private val ink = JetpackInkEngine()
@@ -213,6 +220,13 @@ internal class InkCanvasView(context: Context, onChanged: (List<InkStroke>) -> U
         set(value) { if (field != value) { finishGesture(); resetFrontInk(); field = value; contentChanged() } }
     var template: String = "blank"
         set(value) { if (field != value) { field = value; contentChanged() } }
+    var writingGridVisible: Boolean = false
+        set(value) { if (field != value) { field = value; postInvalidateOnAnimation() } }
+    var writingGridSettings: WritingGridSettings = WritingGridSettings()
+        set(value) { if (field != value) { field = value; postInvalidateOnAnimation() } }
+    var writingGridSnap: Boolean
+        get() = writingGridSettings.snap
+        set(value) { writingGridSettings = writingGridSettings.copy(snap = value) }
     // --- Tables and sticky notes (InkBlock). Ink inside a table moves and scales with it. ---
     private var blockContent: List<InkBlock> = emptyList()
     var blocks: List<InkBlock>
@@ -772,6 +786,10 @@ internal class InkCanvasView(context: Context, onChanged: (List<InkStroke>) -> U
         eraserCursor?.takeIf { brush.eraser && eraserMode != EraserMode.Lasso }?.let {
             canvas.drawCircle(it.x * width, it.y * documentHeight, eraserWidth * width / 1200f, selectionPaint)
         }
+        writingGrid.update(
+            if (!infiniteCanvas) android.graphics.RectF(panX, panY, width * zoomValue + panX, documentHeight * zoomValue + panY) else null,
+            writingGridVisible && !infiniteCanvas, writingGridSettings
+        )
         canvas.restore()
         if (ruler.visible) RulerRenderer.draw(canvas, ruler, width, height, resources.displayMetrics.density, resources.displayMetrics.xdpi / 2.54f * zoomValue)
     }
@@ -1411,7 +1429,12 @@ internal class InkCanvasView(context: Context, onChanged: (List<InkStroke>) -> U
         blockContent.firstOrNull { it.id == selectedBlockId }?.let { startBlockDrag(it, resize = false) }
     }
     private fun moveObject(point: Offset) {
-        if (draggingBlock) { moveBlock(point); return }
+        val snappedPoint = if (writingGridSnap && !infiniteCanvas) {
+            val columns = writingGridSettings.columns.coerceIn(2, 100)
+            val rows = writingGridSettings.rows.coerceIn(2, 100)
+            Offset((point.x * columns).roundToInt() / columns.toFloat(), (point.y * rows).roundToInt() / rows.toFloat())
+        } else point
+        if (draggingBlock) { moveBlock(snappedPoint); return }
         if (!draggingObject) return
         if (objectHandle >= 0) { resizeObject(point); contentChanged(); return }
         if (rotatingObject) {
@@ -1425,7 +1448,7 @@ internal class InkCanvasView(context: Context, onChanged: (List<InkStroke>) -> U
             else imageContent = images.map { if (it.id == selectedObjectId && editable(it.layerId)) it.copy(rotation = angle) else it }
             contentChanged(); return
         }
-        val dx = point.x - lastPosition.x; val dy = point.y - lastPosition.y
+        val dx = snappedPoint.x - lastPosition.x; val dy = snappedPoint.y - lastPosition.y
         if (selectedObjectIsText) {
             textContent = texts.map { text ->
                 if (text.id != selectedObjectId || !editable(text.layerId)) text else {
